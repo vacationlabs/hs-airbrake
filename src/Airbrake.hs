@@ -158,7 +158,7 @@ buildReport locs conf req err = renderMarkup $ do
         error $ do
             class_ (toMarkup (errorType err))
             message (toMarkup (errorDescription err))
-            backtrace $ forM_ locs $ \ (filename, line') ->
+            backtrace $ forM_ locs $ \ (filename, line') -> 
                 line ! file (toValue filename)
                      ! number (toValue line')
 
@@ -188,7 +188,7 @@ buildReport locs conf req err = renderMarkup $ do
         error = Parent "error" "<error" "</error>"
         message = Parent "message" "<message" "</message>"
         backtrace = Parent "backtrace" "<backtrace" "</backtrace>"
-        line = Leaf "line" "<line" " />"
+        line = Leaf "line" "<line" " />" ()
         file = attribute "file" " file=\""
         number = attribute "number" " number=\""
         server_environment = Parent "server-environment" "<server-environment"
