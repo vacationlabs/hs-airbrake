@@ -101,7 +101,8 @@ performNotify loc conf req e = do
     let report = buildReport loc conf req e
     req' <- parseUrl (acApiEndpoint conf)
     let rq = req' { requestBody = RequestBodyLBS report, method = "POST" }
-    _ <- withManager (httpLbs rq)
+    manager <- liftIO $ newManager tlsManagerSettings
+    _ <- httpLbs rq manager
     return ()
 
 -- | Notify Airbrake of an exception.
@@ -159,8 +160,8 @@ buildReport locs conf req err = renderMarkup $ do
             class_ (toMarkup (errorType err))
             message (toMarkup (errorDescription err))
             backtrace $ forM_ locs $ \ (filename, line') -> 
-                line ! file (toValue filename)
-                     ! number (toValue line')
+                line ! (file (toValue filename))
+                     ! (number (toValue line'))
 
         forM_ req $ \ r -> request $ do
             url (toMarkup . show $ W.url r)
