@@ -25,7 +25,7 @@ module Airbrake (
     NonEmpty (..), Location, Locations,
 
     -- *** Wrapping errors
-    toError, Error (..),
+    toError, Error (..), Context (..), emptyContext,
 
     -- * Configuration building
     APIKey, Environment,
@@ -59,13 +59,22 @@ import qualified Network.Wai as Wai
 import Text.Blaze
 import Text.Blaze.Internal
 import Text.Blaze.Renderer.Utf8
+import Data.Maybe
 
 type APIKey = String
 type Environment = String
 
+data Context = Context
+             { contextUserId :: Maybe String
+             } deriving (Eq, Show)
+
+emptyContext :: Context
+emptyContext = Context Nothing
+
 data Error = Error
            { errorType :: T.Text
            , errorDescription :: T.Text
+           , errorContext :: Context
            }
 
 -- | Information to use when communicating with Airbrake.
@@ -142,11 +151,12 @@ notifyReqQ = do
 -- | Convert any 'Exception' to an 'Error'.
 toError :: Exception e => e -> Error
 toError (toException -> SomeException e) =
-    Error (pack (show (typeOf e))) (pack (show e))
+    Error (pack (show (typeOf e))) (pack (show e)) emptyContext
 
 buildReport :: W.WebRequest a
             => Locations -> AirbrakeConf -> Maybe a -> Error -> ByteString
-buildReport locs conf req err = renderMarkup $ do
+buildReport locs conf req err =
+  renderMarkup $ do
     preEscapedText "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
     notice ! nversion "2.3" $ do
         api_key . toMarkup $ acApiKey conf
@@ -155,7 +165,6 @@ buildReport locs conf req err = renderMarkup $ do
             name "airbrake"
             version . toMarkup $ showVersion P.version
             url "http://hackage.haskell.org/package/airbrake"
-
         error $ do
             class_ (toMarkup (errorType err))
             message (toMarkup (errorDescription err))
@@ -165,6 +174,8 @@ buildReport locs conf req err = renderMarkup $ do
 
         forM_ req $ \ r -> request $ do
             url (toMarkup . show $ W.url r)
+            params $ var ! (key $ toValue ("user-id" :: String)) $
+              toMarkup (show $ fromMaybe "No user id available" $ contextUserId $ errorContext err)
             forM_ (W.route r) $ \ rt -> component (toMarkup rt)
             forM_ (W.action r) $ \ act -> action (toMarkup act)
             cgi_data . forM_ (W.otherVars r) $ \ (k, v) ->
@@ -189,6 +200,7 @@ buildReport locs conf req err = renderMarkup $ do
         error = Parent "error" "<error" "</error>"
         message = Parent "message" "<message" "</message>"
         backtrace = Parent "backtrace" "<backtrace" "</backtrace>"
+        params = Parent "params" "<params" "</params>"
         line = Leaf "line" "<line" " />" ()
         file = attribute "file" " file=\""
         number = attribute "number" " number=\""
